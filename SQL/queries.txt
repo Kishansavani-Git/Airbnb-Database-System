@@ -1,0 +1,407 @@
+1.Affordable Available Listings
+
+SELECT l.listing_id, p.title, p.city, p.country,
+       l.price_per_night, l.max_guests, l.bedrooms
+FROM listing l
+JOIN property p ON l.property_id = p.property_id
+WHERE l.availability_status = 'Available'
+  AND l.price_per_night < 3000
+ORDER BY l.price_per_night ASC;
+
+2.Confirmed Bookings in 2026
+
+SELECT b.booking_id, u.full_name AS guest_name,
+       b.check_in_date, b.check_out_date,
+       b.total_amount, b.booking_status
+FROM booking b
+JOIN users u ON b.guest_id = u.user_id
+WHERE b.booking_status = 'Confirmed'
+  AND EXTRACT(YEAR FROM b.booking_date) = 2026
+ORDER BY b.booking_date DESC;
+
+3.Luxury Listings in Mumbai
+
+SELECT p.title, p.city, p.state, l.bedrooms,
+       l.bathrooms, l.price_per_night, l.max_guests
+FROM property p
+JOIN listing l ON p.property_id = l.property_id
+WHERE p.city = 'Mumbai'
+  AND l.bedrooms >= 2
+ORDER BY l.price_per_night DESC;
+
+4.Top 10 Loyal Guests
+
+SELECT u.full_name, u.email,
+       g.loyalty_points, g.travel_preferences
+FROM guest g
+JOIN users u ON g.user_id = u.user_id
+ORDER BY g.loyalty_points DESC
+LIMIT 10;
+
+5.Complete Booking View (Multi-table Join)
+
+SELECT b.booking_id,
+       ug.full_name AS guest_name,
+       uh.full_name AS host_name,
+       p.title AS property_title,
+       p.city, b.check_in_date, b.check_out_date,
+       b.no_of_guests, b.total_amount, b.booking_status
+FROM booking b
+JOIN users ug ON b.guest_id = ug.user_id
+JOIN listing l ON b.listing_id = l.listing_id
+JOIN property p ON l.property_id = p.property_id
+JOIN host h ON p.host_id = h.user_id
+JOIN users uh ON h.user_id = uh.user_id
+ORDER BY b.booking_date DESC;
+
+6.Listings with Amenities (Aggregation)
+
+SELECT p.title, p.city,
+       l.price_per_night,
+       STRING_AGG(a.amenity_name, ', ' ORDER BY a.amenity_name) AS amenities
+FROM listing l
+JOIN property p ON l.property_id = p.property_id
+JOIN listing_amenity la ON l.listing_id = la.listing_id
+JOIN amenity a ON la.amenity_id = a.amenity_id
+GROUP BY p.title, p.city, l.price_per_night, l.listing_id
+ORDER BY l.price_per_night DESC;
+
+7.Guest Booking Count (Including Zero)
+
+SELECT u.user_id, u.full_name, u.email,
+       COUNT(b.booking_id) AS total_bookings
+FROM users u
+JOIN guest g ON u.user_id = g.user_id
+LEFT JOIN booking b ON g.user_id = b.guest_id
+GROUP BY u.user_id, u.full_name, u.email
+ORDER BY total_bookings ASC;
+
+8.Risky Bookings (Payment Issues)
+
+SELECT b.booking_id, u.full_name,
+       b.total_amount, b.booking_status,
+       p.payment_status, p.payment_method,
+       b.booking_date
+FROM booking b
+JOIN payment p ON b.booking_id = p.booking_id
+JOIN users u ON b.guest_id = u.user_id
+WHERE b.booking_status = 'Confirmed'
+  AND p.payment_status IN ('Pending', 'Failed')
+ORDER BY b.booking_date;
+
+9.Dead-stock Listings (No Bookings)
+
+SELECT l.listing_id, p.title, p.city,
+       l.price_per_night, l.created_at
+FROM listing l
+JOIN property p ON l.property_id = p.property_id
+WHERE l.listing_id NOT IN (
+    SELECT DISTINCT listing_id FROM booking
+)
+ORDER BY l.created_at;
+
+10.Host Revenue & Performance
+
+SELECT u.full_name AS host_name,
+       COUNT(b.booking_id) AS total_bookings,
+       SUM(b.total_amount) AS total_revenue,
+       AVG(b.total_amount) AS avg_booking_value,
+       MAX(b.total_amount) AS highest_booking
+FROM booking b
+JOIN listing l ON b.listing_id = l.listing_id
+JOIN property p ON l.property_id = p.property_id
+JOIN users u ON p.host_id = u.user_id
+WHERE b.booking_status = 'Confirmed'
+GROUP BY u.user_id, u.full_name
+ORDER BY total_revenue DESC;
+
+11. Best Rated Cities
+
+SELECT p.city, p.country,
+       COUNT(r.review_id) AS total_reviews,
+       ROUND(AVG(r.rating), 2) AS avg_rating,
+       MIN(r.rating) AS lowest,
+       MAX(r.rating) AS highest
+FROM review r
+JOIN listing l ON r.listing_id = l.listing_id
+JOIN property p ON l.property_id = p.property_id
+GROUP BY p.city, p.country
+HAVING COUNT(r.review_id) >= 2
+ORDER BY avg_rating DESC;
+
+12.Monthly Revenue Trend
+
+SELECT
+    TO_CHAR(b.booking_date, 'YYYY-MM') AS month,
+    COUNT(b.booking_id) AS total_bookings,
+    SUM(b.total_amount) AS monthly_revenue,
+    ROUND(AVG(b.total_amount), 2) AS avg_value
+FROM booking b
+WHERE b.booking_status = 'Confirmed'
+GROUP BY TO_CHAR(b.booking_date, 'YYYY-MM')
+ORDER BY month DESC;
+
+13. Host Cancellation Rate
+
+SELECT u.full_name AS host_name,
+       COUNT(b.booking_id) AS total_bookings,
+       SUM(CASE WHEN b.booking_status = 'Cancelled'
+           THEN 1 ELSE 0 END) AS cancellations,
+       ROUND(
+           100.0 * SUM(CASE WHEN b.booking_status = 'Cancelled'
+               THEN 1 ELSE 0 END) / COUNT(*), 2
+       ) AS cancellation_rate_pct
+FROM booking b
+JOIN listing l ON b.listing_id = l.listing_id
+JOIN property p ON l.property_id = p.property_id
+JOIN users u ON p.host_id = u.user_id
+GROUP BY u.user_id, u.full_name
+HAVING COUNT(b.booking_id) >= 3
+ORDER BY cancellation_rate_pct DESC;
+
+14.Most Popular Amenities
+
+SELECT a.amenity_name,
+       COUNT(la.listing_id) AS listings_count
+FROM amenity a
+JOIN listing_amenity la ON a.amenity_id = la.amenity_id
+GROUP BY a.amenity_id, a.amenity_name
+ORDER BY listings_count DESC
+LIMIT 15;
+
+15.Refund Analysis
+
+SELECT
+    TO_CHAR(c.cancellation_date, 'YYYY-MM') AS month,
+    COUNT(c.cancellation_id) AS total_cancellations,
+    SUM(c.refund_amount) AS total_refunded,
+    AVG(c.refund_amount) AS avg_refund
+FROM cancellation c
+GROUP BY TO_CHAR(c.cancellation_date, 'YYYY-MM')
+ORDER BY month DESC;
+
+16. Top 5 Revenue Generating Hosts
+
+SELECT 
+    h.user_id, 
+    u.full_name, 
+    COUNT(b.booking_id) AS total_bookings,
+    SUM(p.amount) AS total_revenue
+FROM host h
+JOIN users u ON h.user_id = u.user_id
+JOIN property pr ON h.user_id = pr.host_id
+JOIN listing l ON pr.property_id = l.property_id
+JOIN booking b ON l.listing_id = b.listing_id
+JOIN payment p ON b.booking_id = p.booking_id
+WHERE p.payment_status = 'Completed'
+GROUP BY h.user_id, u.full_name
+ORDER BY total_revenue DESC
+LIMIT 5;
+
+17.Average Stay Duration
+
+SELECT AVG(check_out_date - check_in_date) AS avg_stay_days
+FROM booking;
+
+18.Most Frequent Guest
+
+SELECT u.full_name, COUNT(*) AS bookings
+FROM booking b
+JOIN users u ON b.guest_id = u.user_id
+GROUP BY u.full_name
+ORDER BY bookings DESC
+LIMIT 1;
+
+19.Listings Never Reviewed
+
+SELECT l.listing_id, p.title
+FROM listing l
+JOIN property p ON l.property_id = p.property_id
+LEFT JOIN review r ON l.listing_id = r.listing_id
+WHERE r.review_id IS NULL;
+
+20.Revenue Contribution % per Host
+
+SELECT u.full_name,
+       SUM(p.amount) AS revenue,
+       ROUND(100.0 * SUM(p.amount) /
+       SUM(SUM(p.amount)) OVER (), 2) AS percentage
+FROM host h
+JOIN users u ON h.user_id = u.user_id
+JOIN property pr ON h.user_id = pr.host_id
+JOIN listing l ON pr.property_id = l.property_id
+JOIN booking b ON l.listing_id = b.listing_id
+JOIN payment p ON b.booking_id = p.booking_id
+WHERE p.payment_status = 'Completed'
+GROUP BY u.full_name;
+
+21.Guests Spending Above Average
+
+SELECT u.full_name, SUM(b.total_amount) AS spending
+FROM booking b
+JOIN users u ON b.guest_id = u.user_id
+GROUP BY u.full_name
+HAVING SUM(b.total_amount) >
+(
+    SELECT AVG(total_amount) FROM booking
+);
+
+22. Booking Conversion Rate
+
+SELECT 
+    COUNT(*) FILTER (WHERE booking_status = 'Confirmed') * 100.0 / COUNT(*) 
+    AS conversion_rate
+FROM booking;
+
+23. Listings with Highest Ratings
+
+SELECT p.title, AVG(r.rating) AS avg_rating
+FROM review r
+JOIN listing l ON r.listing_id = l.listing_id
+JOIN property p ON l.property_id = p.property_id
+GROUP BY p.title
+ORDER BY avg_rating DESC
+LIMIT 5;
+
+24.Guests Who Cancel Frequently
+
+SELECT u.full_name,
+       COUNT(*) FILTER (WHERE booking_status='Cancelled') AS cancellations
+FROM booking b
+JOIN users u ON b.guest_id = u.user_id
+GROUP BY u.full_name
+ORDER BY cancellations DESC;
+
+25. Listings with Highest Occupancy
+
+SELECT l.listing_id, COUNT(b.booking_id) AS bookings
+FROM listing l
+LEFT JOIN booking b ON l.listing_id = b.listing_id
+GROUP BY l.listing_id
+ORDER BY bookings DESC;
+
+26.Most Used Payment Method
+
+SELECT payment_method, COUNT(*) AS usage_count
+FROM payment
+GROUP BY payment_method
+ORDER BY usage_count DESC;
+
+27.Revenue Lost Due to Cancellation
+
+SELECT SUM(total_amount) AS lost_revenue
+FROM booking
+WHERE booking_status = 'Cancelled';
+
+28.Host Property and Earnings Report
+
+SELECT u.full_name AS host_name,
+       COUNT(DISTINCT pr.property_id) AS total_properties,
+       COUNT(b.booking_id) AS total_bookings,
+       SUM(b.total_amount) AS total_earnings,
+       ROUND(AVG(b.total_amount),2) AS avg_earning
+FROM host h
+JOIN users u ON h.user_id = u.user_id
+JOIN property pr ON h.user_id = pr.host_id
+JOIN listing l ON pr.property_id = l.property_id
+JOIN booking b ON l.listing_id = b.listing_id
+GROUP BY u.full_name
+ORDER BY total_earnings DESC;
+
+29.Payment Analysis by Method
+SELECT p.payment_method,
+       COUNT(p.payment_id) AS total_transactions,
+       SUM(p.amount) AS total_amount,
+       AVG(p.amount) AS avg_payment,
+       MAX(p.amount) AS highest_payment
+FROM payment p
+JOIN booking b ON p.booking_id = b.booking_id
+WHERE p.payment_status = 'Completed'
+GROUP BY p.payment_method
+ORDER BY total_amount DESC;
+
+30.Cancellation Impact Analysis
+
+SELECT p.city,
+       COUNT(b.booking_id) AS total_bookings,
+       SUM(CASE WHEN b.booking_status='Cancelled' THEN 1 ELSE 0 END) AS cancellations,
+       SUM(CASE WHEN b.booking_status='Cancelled' THEN b.total_amount ELSE 0 END) AS lost_revenue,
+       ROUND(AVG(b.total_amount),2) AS avg_booking_value
+FROM booking b
+JOIN listing l ON b.listing_id = l.listing_id
+JOIN property p ON l.property_id = p.property_id
+GROUP BY p.city
+ORDER BY lost_revenue DESC;
+
+31.Inventory Utilization (Listings Usage)
+SELECT l.listing_id,
+       p.title,
+       p.city,
+       COUNT(b.booking_id) AS bookings,
+       SUM(b.total_amount) AS revenue,
+       ROUND(AVG(l.price_per_night),2) AS avg_price
+FROM listing l
+JOIN property p ON l.property_id = p.property_id
+LEFT JOIN booking b ON l.listing_id = b.listing_id
+GROUP BY l.listing_id, p.title, p.city
+ORDER BY bookings DESC;
+
+32.Monthly Business Growth
+
+SELECT TO_CHAR(b.booking_date,'YYYY-MM') AS month,
+       COUNT(b.booking_id) AS total_bookings,
+       SUM(b.total_amount) AS revenue,
+       ROUND(AVG(b.total_amount),2) AS avg_value,
+       MAX(b.total_amount) AS highest_booking
+FROM booking b
+WHERE b.booking_status = 'Confirmed'
+GROUP BY TO_CHAR(b.booking_date,'YYYY-MM')
+ORDER BY month;
+
+33.Customer Retention Analysis (Repeat vs New Users)
+
+SELECT u.full_name,
+       COUNT(b.booking_id) AS total_bookings,
+       SUM(b.total_amount) AS total_spent,
+       CASE 
+           WHEN COUNT(b.booking_id) = 1 THEN 'New Customer'
+           ELSE 'Repeat Customer'
+       END AS customer_type
+FROM users u
+JOIN booking b ON u.user_id = b.guest_id
+WHERE b.booking_status = 'Confirmed'
+GROUP BY u.full_name
+ORDER BY total_bookings DESC;
+
+34.Host Reliability Score (Based on Cancellations)
+
+SELECT u.full_name AS host_name,
+       COUNT(b.booking_id) AS total_bookings,
+       SUM(CASE WHEN b.booking_status = 'Cancelled' THEN 1 ELSE 0 END) AS cancellations,
+       ROUND(100.0 * SUM(CASE WHEN b.booking_status='Cancelled' THEN 1 ELSE 0 END) 
+             / COUNT(*), 2) AS cancellation_rate,
+       CASE 
+           WHEN SUM(CASE WHEN b.booking_status='Cancelled' THEN 1 ELSE 0 END) = 0 
+           THEN 'Reliable'
+           ELSE 'Risky'
+       END AS host_status
+FROM booking b
+JOIN listing l ON b.listing_id = l.listing_id
+JOIN property p ON l.property_id = p.property_id
+JOIN users u ON p.host_id = u.user_id
+GROUP BY u.full_name
+ORDER BY cancellation_rate DESC;
+
+35.City Demand vs Revenue Insight
+
+SELECT p.city,
+       COUNT(b.booking_id) AS total_bookings,
+       SUM(b.total_amount) AS total_revenue,
+       ROUND(AVG(b.total_amount),2) AS avg_booking_value,
+       COUNT(DISTINCT l.listing_id) AS total_listings
+FROM property p
+JOIN listing l ON p.property_id = l.property_id
+JOIN booking b ON l.listing_id = b.listing_id
+WHERE b.booking_status = 'Confirmed'
+GROUP BY p.city
+ORDER BY total_revenue DESC;
